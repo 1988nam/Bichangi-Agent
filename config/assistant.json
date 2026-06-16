@@ -1,0 +1,63 @@
+{
+  "assistant": {
+    "language": "ko",
+    "tone": "short_practical_operations",
+    "primary_interface": "kakaotalk",
+    "secondary_interface": "local_web_dashboard"
+  },
+  "agents": [
+    { "name": "\ud22c\ucc59\uc774", "enabled": true },
+    { "name": "\uac00\ucc59\uc774", "enabled": true },
+    { "name": "\ub2e4\ucc59\uc774", "enabled": true },
+    { "name": "\ubd80\ucc59\uc774", "enabled": true }
+  ],
+  "calendar": {
+    "provider": "google_calendar",
+    "allow_create": true,
+    "allow_update": true,
+    "require_confirmation_for_delete": true
+  },
+  "news": {
+    "providers": ["web_search", "rss"],
+    "keywords": [],
+    "excluded_topics": [],
+    "publishers": []
+  },
+  "delivery": {
+    "daily_summary_file": true,
+    "screen_output": true,
+    "kakaotalk": {
+      "enabled": true,
+      "preferred_time": null
+    }
+  },
+  "memory": {
+    "remember": [
+      "recurring_schedules",
+      "routines",
+      "news_keywords",
+      "excluded_news_topics",
+      "agent_execution_history",
+      "unfinished_tasks",
+      "next_actions",
+      "kakaotalk_notification_time",
+      "summary_style"
+    ]
+  },
+  "safety": {
+    "automatic": [
+      "google_calendar_create",
+      "google_calendar_update",
+      "kakaotalk_send",
+      "agent_background_run",
+      "cloudflare_deploy_or_configure",
+      "news_sources_or_keywords_update",
+      "daily_schedule_update"
+    ],
+    "confirmation_required": [
+      "google_calendar_delete",
+      "file_delete",
+      "file_overwrite"
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bichangi Agent</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Bichangi Agent</h1>
+        <p id="subtitle"></p>
+      </div>
+      <button id="runButton" type="button"></button>
+    </header>
+
+    <main>
+      <section class="summary">
+        <div>
+          <span class="label" id="statusLabel"></span>
+          <strong id="status"></strong>
+        </div>
+        <div>
+          <span class="label" id="dateLabel"></span>
+          <strong id="date">-</strong>
+        </div>
+        <div>
+          <span class="label" id="kakaoLabel"></span>
+          <strong id="kakao">-</strong>
+        </div>
+      </section>
+
+      <section id="sections" class="sections"></section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
