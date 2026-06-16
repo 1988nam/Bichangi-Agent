@@ -95,4 +95,12 @@ npx wrangler secret put NEWS_RSS_URLS
 npx wrangler secret put NEWS_SEARCH_ENDPOINT
 ```
 
+See `docs/integration-setup.md` for Google Calendar, Google Drive, KakaoTalk, and OAuth setup notes.
+
+To set secrets interactively without printing values:
+
+```powershell
+.\scripts\set-secrets.ps1
+```
+
 The final source remote should be `https://github.com/1988nam/Bichangi-Agent`.

@@ -19,6 +19,10 @@
   },
   "vars": {
     "ASSISTANT_TIMEZONE": "Asia/Seoul",
-    "REPORT_MODE": "mock"
+    "REPORT_MODE": "mock",
+    "AGENT_TUCHANGI_URL": "https://toochangi.pages.dev/",
+    "AGENT_GACHANGI_URL": "https://gachangi.pages.dev/",
+    "AGENT_DACHANGI_URL": "https://dachangi.pages.dev/",
+    "AGENT_BUCHANGI_URL": "https://buchangi.pages.dev/"
   }
 }

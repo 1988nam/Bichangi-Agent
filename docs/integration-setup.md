@@ -1,0 +1,100 @@
+# Integration Setup
+
+## Agent URLs
+
+The four Cloudflare Pages agents are configured as Worker variables:
+
+- `AGENT_TUCHANGI_URL=https://toochangi.pages.dev/`
+- `AGENT_GACHANGI_URL=https://gachangi.pages.dev/`
+- `AGENT_DACHANGI_URL=https://dachangi.pages.dev/`
+- `AGENT_BUCHANGI_URL=https://buchangi.pages.dev/`
+
+If the Pages apps require OAuth through the user's local browser session, the Worker cannot reuse that local browser login directly. For serverless background execution, each agent needs one of these:
+
+1. A public or token-protected API endpoint that returns the daily summary.
+2. A Cloudflare Worker-to-Worker service binding.
+3. A refresh-token based backend endpoint.
+4. A Google Drive-backed relay endpoint that writes each agent result to a file the assistant can read.
+
+## Google Calendar
+
+Recommended shape:
+
+- Create a small Google Apps Script or Google Cloud endpoint that reads Calendar and returns JSON.
+- Store that endpoint in Cloudflare with:
+
+```powershell
+npx wrangler secret put GOOGLE_CALENDAR_ENDPOINT
+```
+
+Minimum endpoint response shape:
+
+```json
+{
+  "events": [
+    {
+      "summary": "Example event",
+      "start": "2026-06-16T09:00:00+09:00",
+      "end": "2026-06-16T10:00:00+09:00"
+    }
+  ],
+  "tasks": []
+}
+```
+
+Google setup notes:
+
+- Enable the Google Calendar API in a Google Cloud project.
+- Configure the OAuth consent screen.
+- Create OAuth credentials for user-owned Calendar data.
+- Use a refresh token or Apps Script web app so the Cloudflare Worker does not need a browser login session.
+
+## Google Drive
+
+Recommended shape:
+
+- Create a Google Apps Script Web App that accepts a POST body and writes `YYYY-MM-DD.json` or `YYYY-MM-DD.md` to a Drive folder.
+- Store the Web App URL in Cloudflare with:
+
+```powershell
+npx wrangler secret put GOOGLE_DRIVE_REPORT_ENDPOINT
+```
+
+The Worker will POST the full report JSON to that endpoint after generating a report.
+
+## KakaoTalk
+
+KakaoTalk is not a simple generic incoming webhook like Slack. For personal alerts, use Kakao Developers "Send to me" Kakao Talk Message API, or create a relay endpoint that accepts this Worker payload:
+
+```json
+{
+  "text": "short message",
+  "report": {}
+}
+```
+
+Then store the relay URL in Cloudflare:
+
+```powershell
+npx wrangler secret put KAKAO_WEBHOOK_URL
+```
+
+Kakao setup notes:
+
+- Create a Kakao Developers app.
+- Enable Kakao Login.
+- Configure consent for `talk_message`.
+- Obtain and refresh a user access token.
+- Build a relay endpoint that sends messages to "My Chatroom" using Kakao's REST API.
+
+## Local OAuth Settings
+
+Local OAuth files, browser cookies, and desktop app sessions should not be copied into Worker source or committed to GitHub. If an existing local project already has refresh tokens or credentials, move them into Cloudflare secrets only after confirming the exact variable names and scopes.
+
+Use interactive secret prompts so secret values are not printed:
+
+```powershell
+npx wrangler secret put SECRET_NAME
+```
+
+Never place OAuth tokens in `wrangler.jsonc`, `.env.example`, README, or source files.
