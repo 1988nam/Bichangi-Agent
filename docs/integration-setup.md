@@ -73,7 +73,7 @@ KakaoTalk is not a simple generic incoming webhook like Slack. For personal aler
 }
 ```
 
-Then store the relay URL in Cloudflare:
+If you already want a relay-style endpoint, store that URL in Cloudflare:
 
 ```powershell
 npx wrangler secret put KAKAO_WEBHOOK_URL
@@ -84,8 +84,8 @@ Kakao setup notes:
 - Create a Kakao Developers app.
 - Enable Kakao Login.
 - Configure consent for `talk_message`.
-- Obtain and refresh a user access token.
-- Build a relay endpoint that sends messages to "My Chatroom" using Kakao's REST API.
+- Obtain a refresh token once through the login flow.
+- Either send directly with `KAKAO_REST_API_KEY` + `KAKAO_REFRESH_TOKEN`, or use a relay endpoint.
 
 Current Kakao Console path for redirect URI:
 
@@ -103,6 +103,7 @@ The Worker also exposes:
 
 - `GET /api/kakao/login`
 - `GET /api/kakao/callback`
+- `GET /api/kakao/send-test`
 
 Store the REST API key before using the login endpoint:
 
@@ -115,6 +116,36 @@ If Kakao app security uses a client secret, store it too:
 ```powershell
 npx wrangler secret put KAKAO_CLIENT_SECRET
 ```
+
+After that:
+
+1. Visit:
+
+```text
+https://bichangi-agent.1988nam.workers.dev/api/kakao/login
+```
+
+2. Complete Kakao login and consent.
+3. The callback page will show a refresh token.
+4. Store it:
+
+```powershell
+npx wrangler secret put KAKAO_REFRESH_TOKEN
+```
+
+5. Redeploy:
+
+```powershell
+npx wrangler deploy --minify
+```
+
+6. Verify direct delivery:
+
+```text
+https://bichangi-agent.1988nam.workers.dev/api/kakao/send-test
+```
+
+If that returns `{"ok": true, "mode": "direct"}`, Kakao delivery is wired correctly.
 
 ## Local OAuth Settings
 

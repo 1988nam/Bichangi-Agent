@@ -2,6 +2,7 @@ type AppEnv = Cloudflare.Env & {
   KAKAO_WEBHOOK_URL?: string;
   KAKAO_REST_API_KEY?: string;
   KAKAO_CLIENT_SECRET?: string;
+  KAKAO_REFRESH_TOKEN?: string;
   GOOGLE_DRIVE_REPORT_ENDPOINT?: string;
   GOOGLE_CALENDAR_ENDPOINT?: string;
   AGENT_TUCHANGI_URL?: string;
@@ -13,6 +14,15 @@ type AppEnv = Cloudflare.Env & {
 };
 
 type DeliveryState = "pending" | "sent" | "skipped" | "failed";
+
+interface KakaoTokenResponse {
+  access_token?: string;
+  refresh_token?: string;
+  token_type?: string;
+  expires_in?: number;
+  error?: string;
+  error_description?: string;
+}
 
 interface ConnectorItem {
   label: string;
@@ -158,11 +168,7 @@ async function routeKakaoCallback(request: Request, env: AppEnv): Promise<Respon
     body
   });
 
-  const tokenPayload = (await tokenResponse.json()) as {
-    refresh_token?: string;
-    error?: string;
-    error_description?: string;
-  };
+  const tokenPayload = (await tokenResponse.json()) as KakaoTokenResponse;
 
   if (!tokenResponse.ok || !tokenPayload.refresh_token) {
     return json(
@@ -180,9 +186,76 @@ async function routeKakaoCallback(request: Request, env: AppEnv): Promise<Respon
       "<p>Copy this refresh token once and store it as a Cloudflare secret.</p>",
       `<textarea rows="8" cols="90" readonly>${tokenPayload.refresh_token}</textarea>`,
       "<pre>npx wrangler secret put KAKAO_REFRESH_TOKEN</pre>",
-      "<p>After saving it, do not share this page.</p>"
+      "<p>After saving it, redeploy once, then visit /api/kakao/send-test to verify delivery.</p>"
     ].join("")
   );
+}
+
+async function getKakaoAccessToken(env: AppEnv): Promise<KakaoTokenResponse> {
+  if (!env.KAKAO_REST_API_KEY || !env.KAKAO_REFRESH_TOKEN) {
+    return { error: "missing_kakao_credentials" };
+  }
+
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    client_id: env.KAKAO_REST_API_KEY,
+    refresh_token: env.KAKAO_REFRESH_TOKEN
+  });
+
+  if (env.KAKAO_CLIENT_SECRET) {
+    body.set("client_secret", env.KAKAO_CLIENT_SECRET);
+  }
+
+  const response = await fetch("https://kauth.kakao.com/oauth/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded;charset=utf-8" },
+    body
+  });
+
+  return (await response.json()) as KakaoTokenResponse;
+}
+
+async function sendKakaoDirectMessage(env: AppEnv, text: string): Promise<boolean> {
+  const tokenPayload = await getKakaoAccessToken(env);
+  if (!tokenPayload.access_token) {
+    console.error(JSON.stringify({ event: "kakao_access_token_failed", detail: tokenPayload }));
+    return false;
+  }
+
+  const templateObject = {
+    object_type: "text",
+    text,
+    link: {
+      web_url: "https://bichangi-agent.1988nam.workers.dev",
+      mobile_web_url: "https://bichangi-agent.1988nam.workers.dev"
+    },
+    button_title: "비서 열기"
+  };
+
+  const body = new URLSearchParams({
+    template_object: JSON.stringify(templateObject)
+  });
+
+  const response = await fetch("https://kapi.kakao.com/v2/api/talk/memo/default/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${tokenPayload.access_token}`,
+      "content-type": "application/x-www-form-urlencoded;charset=utf-8"
+    },
+    body
+  });
+
+  if (!response.ok) {
+    console.error(
+      JSON.stringify({
+        event: "kakao_message_send_failed",
+        status: response.status,
+        detail: await response.text()
+      })
+    );
+  }
+
+  return response.ok;
 }
 
 async function readLimitedText(response: Response): Promise<string> {
@@ -355,15 +428,34 @@ function toKakaoMessage(report: DailyReport): string {
 }
 
 async function sendKakaoIfConfigured(env: AppEnv, report: DailyReport): Promise<DailyReport> {
+  const text = toKakaoMessage(report);
+
+  if (env.KAKAO_REFRESH_TOKEN && env.KAKAO_REST_API_KEY) {
+    const ok = await sendKakaoDirectMessage(env, text);
+    return {
+      ...report,
+      delivery: {
+        ...report.delivery,
+        kakao: ok ? "sent" : "failed"
+      }
+    };
+  }
+
   if (!env.KAKAO_WEBHOOK_URL) {
-    return report;
+    return {
+      ...report,
+      delivery: {
+        ...report.delivery,
+        kakao: "skipped"
+      }
+    };
   }
 
   try {
     const response = await fetch(env.KAKAO_WEBHOOK_URL, {
       method: "POST",
       headers: { "content-type": "application/json; charset=utf-8" },
-      body: JSON.stringify({ text: toKakaoMessage(report), report })
+      body: JSON.stringify({ text, report })
     });
 
     return {
@@ -440,6 +532,14 @@ async function routeApi(request: Request, env: AppEnv, ctx: ExecutionContext): P
 
   if (url.pathname === "/api/kakao/callback" && request.method === "GET") {
     return routeKakaoCallback(request, env);
+  }
+
+  if (url.pathname === "/api/kakao/send-test" && request.method === "GET") {
+    const ok = await sendKakaoDirectMessage(
+      env,
+      `[${getKoreanDate(env.ASSISTANT_TIMEZONE)}] 비서 카카오 연결 테스트`
+    );
+    return json({ ok, mode: ok ? "direct" : "failed" }, { status: ok ? 200 : 500 });
   }
 
   return json({ error: "not_found" }, { status: 404 });

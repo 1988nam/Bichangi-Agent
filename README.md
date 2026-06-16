@@ -87,6 +87,7 @@ Secrets to add later:
 npx wrangler secret put KAKAO_WEBHOOK_URL
 npx wrangler secret put KAKAO_REST_API_KEY
 npx wrangler secret put KAKAO_CLIENT_SECRET
+npx wrangler secret put KAKAO_REFRESH_TOKEN
 npx wrangler secret put GOOGLE_DRIVE_REPORT_ENDPOINT
 npx wrangler secret put GOOGLE_CALENDAR_ENDPOINT
 npx wrangler secret put AGENT_TUCHANGI_URL
