@@ -1,5 +1,7 @@
 type AppEnv = Cloudflare.Env & {
   KAKAO_WEBHOOK_URL?: string;
+  KAKAO_REST_API_KEY?: string;
+  KAKAO_CLIENT_SECRET?: string;
   GOOGLE_DRIVE_REPORT_ENDPOINT?: string;
   GOOGLE_CALENDAR_ENDPOINT?: string;
   AGENT_TUCHANGI_URL?: string;
@@ -75,6 +77,112 @@ function getKoreanDate(timezone: string, now = new Date()): string {
     day: "2-digit"
   });
   return formatter.format(now);
+}
+
+function html(body: string, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  headers.set("content-type", "text/html; charset=utf-8");
+  return new Response(body, { ...init, headers });
+}
+
+function getOrigin(request: Request): string {
+  const url = new URL(request.url);
+  return `${url.protocol}//${url.host}`;
+}
+
+function getKakaoRedirectUri(request: Request): string {
+  return `${getOrigin(request)}/api/kakao/callback`;
+}
+
+function routeKakaoLogin(request: Request, env: AppEnv): Response {
+  if (!env.KAKAO_REST_API_KEY) {
+    return json(
+      {
+        error: "missing_kakao_rest_api_key",
+        next: "Run: npx wrangler secret put KAKAO_REST_API_KEY"
+      },
+      { status: 500 }
+    );
+  }
+
+  const authorizeUrl = new URL("https://kauth.kakao.com/oauth/authorize");
+  authorizeUrl.searchParams.set("response_type", "code");
+  authorizeUrl.searchParams.set("client_id", env.KAKAO_REST_API_KEY);
+  authorizeUrl.searchParams.set("redirect_uri", getKakaoRedirectUri(request));
+  authorizeUrl.searchParams.set("scope", "talk_message");
+
+  return Response.redirect(authorizeUrl.toString(), 302);
+}
+
+async function routeKakaoCallback(request: Request, env: AppEnv): Promise<Response> {
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  const error = url.searchParams.get("error");
+  const errorDescription = url.searchParams.get("error_description");
+
+  if (error) {
+    return html(
+      `<h1>Kakao login failed</h1><p>${error}</p><p>${errorDescription ?? ""}</p>`,
+      { status: 400 }
+    );
+  }
+
+  if (!code) {
+    return html("<h1>Kakao callback ready</h1><p>No authorization code was provided.</p>", { status: 400 });
+  }
+
+  if (!env.KAKAO_REST_API_KEY) {
+    return html(
+      [
+        "<h1>Kakao authorization code received</h1>",
+        "<p>Set KAKAO_REST_API_KEY, then retry /api/kakao/login.</p>",
+        "<pre>npx wrangler secret put KAKAO_REST_API_KEY</pre>"
+      ].join("")
+    );
+  }
+
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    client_id: env.KAKAO_REST_API_KEY,
+    redirect_uri: getKakaoRedirectUri(request),
+    code
+  });
+
+  if (env.KAKAO_CLIENT_SECRET) {
+    body.set("client_secret", env.KAKAO_CLIENT_SECRET);
+  }
+
+  const tokenResponse = await fetch("https://kauth.kakao.com/oauth/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded;charset=utf-8" },
+    body
+  });
+
+  const tokenPayload = (await tokenResponse.json()) as {
+    refresh_token?: string;
+    error?: string;
+    error_description?: string;
+  };
+
+  if (!tokenResponse.ok || !tokenPayload.refresh_token) {
+    return json(
+      {
+        error: "kakao_token_exchange_failed",
+        detail: tokenPayload
+      },
+      { status: 400 }
+    );
+  }
+
+  return html(
+    [
+      "<h1>Kakao refresh token issued</h1>",
+      "<p>Copy this refresh token once and store it as a Cloudflare secret.</p>",
+      `<textarea rows="8" cols="90" readonly>${tokenPayload.refresh_token}</textarea>`,
+      "<pre>npx wrangler secret put KAKAO_REFRESH_TOKEN</pre>",
+      "<p>After saving it, do not share this page.</p>"
+    ].join("")
+  );
 }
 
 async function readLimitedText(response: Response): Promise<string> {
@@ -324,6 +432,14 @@ async function routeApi(request: Request, env: AppEnv, ctx: ExecutionContext): P
   if (url.pathname === "/api/report/run" && request.method === "POST") {
     const report = await generateAndDeliver(env, ctx);
     return json(report);
+  }
+
+  if (url.pathname === "/api/kakao/login" && request.method === "GET") {
+    return routeKakaoLogin(request, env);
+  }
+
+  if (url.pathname === "/api/kakao/callback" && request.method === "GET") {
+    return routeKakaoCallback(request, env);
   }
 
   return json({ error: "not_found" }, { status: 404 });

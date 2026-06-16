@@ -87,6 +87,35 @@ Kakao setup notes:
 - Obtain and refresh a user access token.
 - Build a relay endpoint that sends messages to "My Chatroom" using Kakao's REST API.
 
+Current Kakao Console path for redirect URI:
+
+1. Open the app in Kakao Developers Console.
+2. In the left sidebar, go to `제품 설정 > 카카오 로그인`.
+3. Turn Kakao Login on.
+4. Find the `Redirect URI` section on that page.
+5. Add:
+
+```text
+https://bichangi-agent.1988nam.workers.dev/api/kakao/callback
+```
+
+The Worker also exposes:
+
+- `GET /api/kakao/login`
+- `GET /api/kakao/callback`
+
+Store the REST API key before using the login endpoint:
+
+```powershell
+npx wrangler secret put KAKAO_REST_API_KEY
+```
+
+If Kakao app security uses a client secret, store it too:
+
+```powershell
+npx wrangler secret put KAKAO_CLIENT_SECRET
+```
+
 ## Local OAuth Settings
 
 Local OAuth files, browser cookies, and desktop app sessions should not be copied into Worker source or committed to GitHub. If an existing local project already has refresh tokens or credentials, move them into Cloudflare secrets only after confirming the exact variable names and scopes.
