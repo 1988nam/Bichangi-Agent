@@ -3,35 +3,94 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Bichangi Agent</title>
+    <title>비창기 — 운영 비서</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <header class="topbar">
-      <div>
-        <h1>Bichangi Agent</h1>
-        <p id="subtitle"></p>
+      <div class="brand">
+        <h1>비창기 Agent</h1>
+        <p class="subtitle">일정 · 에이전트 업데이트 · 오늘 뉴스를 한국어로 짧게 정리합니다.</p>
       </div>
-      <button id="runButton" type="button"></button>
+      <div class="actions">
+        <button id="runButton" type="button">지금 실행</button>
+        <button id="diagButton" type="button" class="ghost">진단</button>
+      </div>
     </header>
 
     <main>
-      <section class="summary">
-        <div>
-          <span class="label" id="statusLabel"></span>
-          <strong id="status"></strong>
+      <section class="status-bar" id="statusBar">
+        <div><span class="label">상태</span><strong id="status">불러오는 중…</strong></div>
+        <div><span class="label">날짜</span><strong id="date">-</strong></div>
+        <div><span class="label">생성</span><strong id="generatedAt">-</strong></div>
+        <div><span class="label">요약엔진</span><strong id="engine">-</strong></div>
+        <div><span class="label">카카오</span><strong id="kakao">-</strong></div>
+      </section>
+
+      <section class="card briefing">
+        <h2 id="headline">오늘의 브리핑</h2>
+
+        <div class="kakao-preview">
+          <span class="label">카카오 알림 미리보기 (≤200자)</span>
+          <p id="kakaoText">-</p>
         </div>
-        <div>
-          <span class="label" id="dateLabel"></span>
-          <strong id="date">-</strong>
-        </div>
-        <div>
-          <span class="label" id="kakaoLabel"></span>
-          <strong id="kakao">-</strong>
+
+        <div class="grid">
+          <article class="block">
+            <h3>일정 / 할 일</h3>
+            <pre id="schedule" class="body">-</pre>
+          </article>
+          <article class="block">
+            <h3>에이전트 업데이트</h3>
+            <pre id="agents" class="body">-</pre>
+          </article>
+          <article class="block">
+            <h3>오늘 뉴스</h3>
+            <pre id="news" class="body">-</pre>
+          </article>
+          <article class="block">
+            <h3>액션 아이템</h3>
+            <ul id="actionItems" class="body"></ul>
+          </article>
         </div>
       </section>
 
-      <section id="sections" class="sections"></section>
+      <section class="card" id="rawCard">
+        <h2>원본 데이터</h2>
+        <div class="grid">
+          <article class="block">
+            <h3>캘린더 <span class="pill" id="calStatus"></span></h3>
+            <ul id="rawCalendar" class="raw-list"></ul>
+          </article>
+          <article class="block">
+            <h3>에이전트 상태</h3>
+            <ul id="rawAgents" class="raw-list"></ul>
+          </article>
+          <article class="block wide">
+            <h3>뉴스 항목 <span class="pill" id="newsStatus"></span></h3>
+            <ul id="rawNews" class="raw-list"></ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="card" id="diagCard" hidden>
+        <h2>진단 <button id="diagLiveButton" type="button" class="ghost small">실호출 검증(?live)</button></h2>
+        <p class="muted" id="diagSummary"></p>
+        <ul id="diagChecks" class="raw-list"></ul>
+      </section>
+
+      <section class="card memory">
+        <h2>메모리 / 설정</h2>
+        <p class="muted">뉴스 키워드·제외 주제·RSS 소스를 저장하면 다음 실행부터 반영됩니다. (쉼표로 구분)</p>
+        <label>뉴스 키워드<input id="memKeywords" type="text" placeholder="예: AI, 통신, LG유플러스" /></label>
+        <label>제외 주제<input id="memExcluded" type="text" placeholder="예: 연예, 스포츠" /></label>
+        <label>RSS URL<textarea id="memRss" rows="3" placeholder="쉼표 또는 줄바꿈으로 여러 개"></textarea></label>
+        <label>카카오 알림 선호 시각<input id="memKakaoTime" type="text" placeholder="예: 08:00" /></label>
+        <div class="actions">
+          <button id="saveMemory" type="button">저장</button>
+          <span id="memSaved" class="muted"></span>
+        </div>
+      </section>
     </main>
 
     <script src="/app.js" type="module"></script>

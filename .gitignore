@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 .venv/
 .env
+.dev.vars
 data/
 node_modules/
 .wrangler/

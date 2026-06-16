@@ -1,5 +1,31 @@
 # Integration Setup
 
+## Gemini (요약 두뇌)
+
+The assistant uses Google Gemini to summarize calendar, agent, and news data into a
+Korean, importance-sorted briefing.
+
+- Get an API key from Google AI Studio.
+- Store it as a Cloudflare secret:
+
+```powershell
+npx wrangler secret put GEMINI_API_KEY
+```
+
+- Model defaults to `gemini-3.5-flash`; override via the `GEMINI_MODEL` var in
+  `wrangler.jsonc`. The client disables "thinking" (`thinkingBudget: 0`) so the whole
+  output budget is spent on the visible answer, and auto-falls back to `gemini-2.5-flash`
+  if the configured model returns 404.
+- Local dev reads the key from `.dev.vars` (gitignored), not from secrets.
+- Without the key the Worker still produces a rule-based fallback briefing.
+
+## Agent status APIs (optional, recommended)
+
+`AGENT_*_URL` point at the agent homepages. The Worker can only detect "the deployed page
+changed" from a homepage. For a real update summary, expose a small JSON status endpoint
+per agent and set `AGENT_TUCHANGI_STATUS_URL` (etc.); when present it is used instead of
+the homepage and its `status`/`summary` field is surfaced directly.
+
 ## Agent URLs
 
 The four Cloudflare Pages agents are configured as Worker variables:
