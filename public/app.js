@@ -35,6 +35,13 @@ function setText(id, text) {
   if (el) el.textContent = text ?? "-";
 }
 
+function friendlyNote(note) {
+  if (!note) return "";
+  if (note.startsWith("primary_overloaded:")) return "기본 모델 혼잡 → 폴백 모델로 요약 생성(정상)";
+  if (note.startsWith("primary_model_not_found:")) return "기본 모델 없음 → 폴백 모델로 요약 생성(정상)";
+  return note;
+}
+
 function fmtTime(iso) {
   if (!iso) return "-";
   const d = new Date(iso);
@@ -62,7 +69,8 @@ function renderReport(report) {
   setText("agents", b.agents ?? "-");
   setText("news", b.news ?? "-");
   if (b.note) {
-    setText("status", `${report.raw ? "최신 브리핑" : ""} · ${b.note}`);
+    const base = report.raw ? "최신 브리핑" : "데이터 없음";
+    setText("status", `${base} · ${friendlyNote(b.note)}`);
   }
 
   const actions = $("actionItems");
