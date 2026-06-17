@@ -28,6 +28,7 @@
     "REPORT_MODE": "live",
     "PUBLIC_BASE_URL": "https://bichangi-agent.1988nam.workers.dev",
     "GEMINI_MODEL": "gemini-3.5-flash",
+    "GEMINI_BASE_URL": "https://gateway.ai.cloudflare.com/v1/311759d19647dd30c10f969bd7503c72/bichangi/google-ai-studio/v1beta/models",
     "AGENT_TUCHANGI_URL": "https://toochangi.pages.dev/",
     "AGENT_GACHANGI_URL": "https://gachangi.pages.dev/",
     "AGENT_DACHANGI_URL": "https://dachangi.pages.dev/",

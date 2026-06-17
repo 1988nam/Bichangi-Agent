@@ -6,7 +6,11 @@ import type { AppEnv } from "./types";
 
 const DEFAULT_MODEL = "gemini-3.5-flash";
 const FALLBACK_MODEL = "gemini-2.5-flash";
-const BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const DEFAULT_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+
+function baseUrl(env: AppEnv): string {
+  return (env.GEMINI_BASE_URL && env.GEMINI_BASE_URL.trim().replace(/\/$/, "")) || DEFAULT_BASE;
+}
 
 interface GeminiResponse {
   candidates?: Array<{
@@ -46,11 +50,13 @@ function preferredModel(env: AppEnv): string {
   return (env.GEMINI_MODEL && env.GEMINI_MODEL.trim()) || DEFAULT_MODEL;
 }
 
-async function callOnce(
-  env: AppEnv,
-  model: string,
-  options: GenerateOptions,
-): Promise<{ result: GeminiResult; notFound: boolean }> {
+type CallOutcome = { result: GeminiResult; notFound: boolean; retriable: boolean };
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function callOnce(env: AppEnv, model: string, options: GenerateOptions): Promise<CallOutcome> {
   const body: Record<string, unknown> = {
     contents: [{ role: "user", parts: [{ text: options.prompt }] }],
     generationConfig: {
@@ -64,22 +70,25 @@ async function callOnce(
     body.systemInstruction = { parts: [{ text: options.system }] };
   }
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-goog-api-key": env.GEMINI_API_KEY as string,
+  };
+  // Authenticated Cloudflare AI Gateway (proxies Gemini from a supported region).
+  if (env.AI_GATEWAY_TOKEN) {
+    headers["cf-aig-authorization"] = `Bearer ${env.AI_GATEWAY_TOKEN}`;
+  }
+
   let res: Response;
   try {
-    res = await fetch(`${BASE}/${model}:generateContent`, {
+    res = await fetch(`${baseUrl(env)}/${model}:generateContent`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": env.GEMINI_API_KEY as string,
-      },
+      headers,
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(25_000),
     });
   } catch (err) {
-    return {
-      result: { ok: false, text: "", model, error: `network: ${String(err)}` },
-      notFound: false,
-    };
+    return { result: { ok: false, text: "", model, error: `network: ${String(err)}` }, notFound: false, retriable: true };
   }
 
   let data: GeminiResponse;
@@ -89,12 +98,14 @@ async function callOnce(
     return {
       result: { ok: false, text: "", model, error: `bad_json HTTP ${res.status}` },
       notFound: res.status === 404,
+      retriable: res.status >= 500,
     };
   }
 
   if (!res.ok || data.error) {
     const status = data.error?.status ?? `HTTP_${res.status}`;
     const notFound = res.status === 404 || status === "NOT_FOUND";
+    const retriable = res.status >= 500 || status === "UNAVAILABLE" || status === "INTERNAL";
     return {
       result: {
         ok: false,
@@ -104,6 +115,7 @@ async function callOnce(
         error: data.error?.message ?? `Gemini request failed (HTTP ${res.status})`,
       },
       notFound,
+      retriable,
     };
   }
 
@@ -111,6 +123,7 @@ async function callOnce(
     return {
       result: { ok: false, text: "", model, error: `prompt_blocked: ${data.promptFeedback.blockReason}` },
       notFound: false,
+      retriable: false,
     };
   }
 
@@ -120,27 +133,43 @@ async function callOnce(
     return {
       result: { ok: false, text: "", model, error: `no_text: ${candidate?.finishReason ?? "UNKNOWN"}` },
       notFound: false,
+      retriable: false,
     };
   }
 
-  return { result: { ok: true, text, model }, notFound: false };
+  return { result: { ok: true, text, model }, notFound: false, retriable: false };
 }
 
-// Generate text. On a 404 (bad/unavailable model id) automatically retries once
-// with the well-proven fallback model so a wrong GEMINI_MODEL never hard-fails.
+// Retry transient 5xx / UNAVAILABLE (model overload) a couple times with backoff.
+async function callWithRetry(env: AppEnv, model: string, options: GenerateOptions): Promise<CallOutcome> {
+  let outcome = await callOnce(env, model, options);
+  let attempt = 1;
+  while (!outcome.result.ok && outcome.retriable && attempt < 3) {
+    await sleep(700 * attempt);
+    outcome = await callOnce(env, model, options);
+    attempt += 1;
+  }
+  return outcome;
+}
+
+// Generate text. Transient overloads are retried; a 404 (bad/unavailable model id)
+// falls back to the well-proven model so a wrong GEMINI_MODEL never hard-fails.
 export async function generate(env: AppEnv, options: GenerateOptions): Promise<GeminiResult> {
   if (!geminiConfigured(env)) {
     return { ok: false, text: "", error: "missing_gemini_api_key" };
   }
 
   const primary = preferredModel(env);
-  const first = await callOnce(env, primary, options);
-  if (first.result.ok || !first.notFound) return first.result;
+  const first = await callWithRetry(env, primary, options);
+  if (first.result.ok) return first.result;
 
-  if (primary !== FALLBACK_MODEL) {
-    const second = await callOnce(env, FALLBACK_MODEL, options);
+  // Fall back to the proven model on a bad model id (404) OR persistent overload
+  // (5xx/UNAVAILABLE) — a different model is often less loaded.
+  if ((first.notFound || first.retriable) && primary !== FALLBACK_MODEL) {
+    const second = await callWithRetry(env, FALLBACK_MODEL, options);
     if (second.result.ok) {
-      return { ...second.result, error: `primary_model_not_found:${primary}` };
+      const reason = first.notFound ? `primary_model_not_found:${primary}` : `primary_overloaded:${primary}`;
+      return { ...second.result, error: reason };
     }
     return second.result;
   }

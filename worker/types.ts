@@ -13,9 +13,14 @@ export interface AppEnv {
   REPORT_MODE?: string;
   PUBLIC_BASE_URL?: string;
   GEMINI_MODEL?: string;
+  // Override the Gemini base (up to ".../models"). Set to a Cloudflare AI Gateway
+  // google-ai-studio URL to proxy through a supported region (works around
+  // "User location is not supported" from the Workers edge).
+  GEMINI_BASE_URL?: string;
 
   // Secrets (wrangler secret put / .dev.vars)
   AUTH_TOKEN?: string; // when set, gates mutating/side-effecting /api routes
+  AI_GATEWAY_TOKEN?: string; // cf-aig-authorization Bearer for an authenticated AI Gateway
   GEMINI_API_KEY?: string;
   KAKAO_WEBHOOK_URL?: string;
   KAKAO_REST_API_KEY?: string;
