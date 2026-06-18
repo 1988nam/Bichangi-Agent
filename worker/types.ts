@@ -7,6 +7,10 @@ export interface AppEnv {
   // Bindings
   REPORTS: KVNamespace;
   ASSETS: Fetcher;
+  // Service bindings to the agent Workers (same-account workers.dev can't be
+  // reached by URL fetch). Optional so local dev / partial config still works.
+  SVC_GACHANGI?: Fetcher;
+  SVC_BUCHANGI?: Fetcher;
 
   // Plain vars (wrangler.jsonc "vars")
   ASSISTANT_TIMEZONE: string;

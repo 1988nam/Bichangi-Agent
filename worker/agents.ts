@@ -1,19 +1,20 @@
 import type { AgentKind, AgentStatus, AppEnv, Memory } from "./types";
-import { fetchText, sha256Hex, trimDetail } from "./util";
+import { fetchText, fetchViaBinding, sha256Hex, trimDetail } from "./util";
 import { stripHtml } from "./feed";
 
 interface AgentTarget {
   name: string;
   homepage?: string;
   statusUrl?: string;
+  binding?: Fetcher; // service binding to reach a same-account Worker
 }
 
 function targets(env: AppEnv): AgentTarget[] {
   return [
     { name: "투챙이", homepage: env.AGENT_TUCHANGI_URL, statusUrl: env.AGENT_TUCHANGI_STATUS_URL },
-    { name: "가챙이", homepage: env.AGENT_GACHANGI_URL, statusUrl: env.AGENT_GACHANGI_STATUS_URL },
+    { name: "가챙이", homepage: env.AGENT_GACHANGI_URL, statusUrl: env.AGENT_GACHANGI_STATUS_URL, binding: env.SVC_GACHANGI },
     { name: "다챙이", homepage: env.AGENT_DACHANGI_URL, statusUrl: env.AGENT_DACHANGI_STATUS_URL },
-    { name: "부챙이", homepage: env.AGENT_BUCHANGI_URL, statusUrl: env.AGENT_BUCHANGI_STATUS_URL },
+    { name: "부챙이", homepage: env.AGENT_BUCHANGI_URL, statusUrl: env.AGENT_BUCHANGI_STATUS_URL, binding: env.SVC_BUCHANGI },
   ];
 }
 
@@ -27,7 +28,9 @@ async function probeTarget(target: AgentTarget, prevHash?: string): Promise<Agen
 
   // 1) Real status API (JSON) if configured — the meaningful signal.
   if (target.statusUrl) {
-    const res = await fetchText(target.statusUrl, {}, 12_000);
+    const res = target.binding
+      ? await fetchViaBinding(target.binding, target.statusUrl)
+      : await fetchText(target.statusUrl, {}, 12_000);
     if (!res.ok) {
       return {
         name,

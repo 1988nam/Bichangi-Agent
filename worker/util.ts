@@ -150,6 +150,26 @@ export async function fetchText(
   }
 }
 
+// Fetch via a service binding (for same-account Workers that URL fetch can't
+// reach). The binding ignores the URL host and routes to the bound Worker; the
+// path + query still matter, so pass the full status URL.
+export async function fetchViaBinding(
+  binding: Fetcher,
+  url: string,
+  timeoutMs = 12_000,
+): Promise<FetchTextResult> {
+  try {
+    const res = await binding.fetch(url, {
+      headers: { accept: "application/json, text/plain, */*" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const text = await readLimitedText(res);
+    return { ok: res.ok, status: res.status, text };
+  } catch (err) {
+    return { ok: false, status: 0, text: "", error: String(err) };
+  }
+}
+
 export async function sha256Hex(text: string): Promise<string> {
   const data = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest("SHA-256", data);

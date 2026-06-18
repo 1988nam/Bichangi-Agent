@@ -9,6 +9,7 @@ import {
   listRecentReports,
   getReportByDate,
   addEvent,
+  getRecentEvents,
 } from "./storage";
 import {
   routeKakaoLogin,
@@ -119,6 +120,10 @@ async function routeApi(request: Request, env: AppEnv, ctx: ExecutionContext): P
 
   if (pathname === "/api/report/history" && method === "GET") {
     return json({ reports: await listRecentReports(env, 30) });
+  }
+
+  if (pathname === "/api/events" && method === "GET") {
+    return json({ events: await getRecentEvents(env, undefined, 50) });
   }
 
   const dateMatch = pathname.match(/^\/api\/report\/(\d{4}-\d{2}-\d{2})$/);

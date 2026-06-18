@@ -25,6 +25,12 @@
       "id": "2e1f7eed3491448084c9444fa6dee95c"
     }
   ],
+  // Same-account *.workers.dev Worker→Worker fetch doesn't reach the target, so
+  // the agent Workers are reached via service bindings instead of their URL.
+  "services": [
+    { "binding": "SVC_GACHANGI", "service": "gachangi-agent-worker" },
+    { "binding": "SVC_BUCHANGI", "service": "buchangi" }
+  ],
   "vars": {
     "ASSISTANT_TIMEZONE": "Asia/Seoul",
     "REPORT_MODE": "live",

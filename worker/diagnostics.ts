@@ -1,5 +1,5 @@
 import type { AppEnv } from "./types";
-import { fetchText, nowIso } from "./util";
+import { fetchText, fetchViaBinding, nowIso } from "./util";
 import { geminiConfigured, generate } from "./gemini";
 import { checkKakao, publicBaseUrl } from "./kakao";
 import { probeStorage, getMemory } from "./storage";
@@ -71,10 +71,10 @@ async function checkCalendar(env: AppEnv): Promise<Check> {
 
 async function checkAgents(env: AppEnv): Promise<Check> {
   const targets = [
-    { name: "투챙이", url: env.AGENT_TUCHANGI_STATUS_URL ?? env.AGENT_TUCHANGI_URL, api: Boolean(env.AGENT_TUCHANGI_STATUS_URL) },
-    { name: "가챙이", url: env.AGENT_GACHANGI_STATUS_URL ?? env.AGENT_GACHANGI_URL, api: Boolean(env.AGENT_GACHANGI_STATUS_URL) },
-    { name: "다챙이", url: env.AGENT_DACHANGI_STATUS_URL ?? env.AGENT_DACHANGI_URL, api: Boolean(env.AGENT_DACHANGI_STATUS_URL) },
-    { name: "부챙이", url: env.AGENT_BUCHANGI_STATUS_URL ?? env.AGENT_BUCHANGI_URL, api: Boolean(env.AGENT_BUCHANGI_STATUS_URL) },
+    { name: "투챙이", url: env.AGENT_TUCHANGI_STATUS_URL ?? env.AGENT_TUCHANGI_URL, api: Boolean(env.AGENT_TUCHANGI_STATUS_URL), binding: undefined as Fetcher | undefined },
+    { name: "가챙이", url: env.AGENT_GACHANGI_STATUS_URL ?? env.AGENT_GACHANGI_URL, api: Boolean(env.AGENT_GACHANGI_STATUS_URL), binding: env.SVC_GACHANGI },
+    { name: "다챙이", url: env.AGENT_DACHANGI_STATUS_URL ?? env.AGENT_DACHANGI_URL, api: Boolean(env.AGENT_DACHANGI_STATUS_URL), binding: undefined as Fetcher | undefined },
+    { name: "부챙이", url: env.AGENT_BUCHANGI_STATUS_URL ?? env.AGENT_BUCHANGI_URL, api: Boolean(env.AGENT_BUCHANGI_STATUS_URL), binding: env.SVC_BUCHANGI },
   ];
   const configured = targets.filter((t) => t.url).length;
   if (configured === 0) {
@@ -83,7 +83,9 @@ async function checkAgents(env: AppEnv): Promise<Check> {
   const results = await Promise.all(
     targets.map(async (t) => {
       if (!t.url) return { name: t.name, ok: false, note: "미설정" };
-      const res = await fetchText(t.url, {}, 8_000);
+      const res = t.api && t.binding
+        ? await fetchViaBinding(t.binding, t.url, 8_000)
+        : await fetchText(t.url, {}, 8_000);
       return { name: t.name, ok: res.ok, note: res.ok ? (t.api ? "상태API OK" : "홈페이지OK") : `HTTP ${res.status}` };
     }),
   );
