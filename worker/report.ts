@@ -46,7 +46,7 @@ function buildPrompt(
     date,
     calendar: {
       status: calendar.status,
-      events: calendar.events,
+      events: calendar.events.map((e) => ({ when: e.when ?? e.start, summary: e.summary })),
       tasks: calendar.tasks,
     },
     agents: agents.map((a) => ({
@@ -103,7 +103,7 @@ function fallbackBriefing(
 ): Briefing {
   const scheduleLines =
     calendar.status === "ok" && calendar.events.length
-      ? calendar.events.map((e) => `${e.start || "시간미정"} ${e.summary}`)
+      ? calendar.events.map((e) => `${e.when || e.start || "시간미정"} ${e.summary}`)
       : [calendar.detail];
   const openTasks = calendar.tasks.filter((t) => !t.done).map((t) => `· ${t.title}`);
 

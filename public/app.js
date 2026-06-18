@@ -98,7 +98,7 @@ function renderRaw(raw) {
   const cal = $("rawCalendar");
   const calItems = [];
   for (const e of raw.calendar?.events ?? []) {
-    calItems.push(`${e.start || "시간미정"} — ${e.summary}`);
+    calItems.push(`${e.when || e.start || "시간미정"} — ${e.summary}`);
   }
   for (const t of raw.calendar?.tasks ?? []) {
     calItems.push(`${t.done ? "✓" : "□"} ${t.title}`);

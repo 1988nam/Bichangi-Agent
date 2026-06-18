@@ -51,6 +51,7 @@ export interface CalendarEvent {
   start: string; // ISO or HH:mm
   end?: string;
   allDay?: boolean;
+  when?: string; // human-friendly KST label (HH:mm / 종일 / 진행 중(~MM-DD))
 }
 
 export interface CalendarTask {

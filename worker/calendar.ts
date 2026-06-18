@@ -57,12 +57,36 @@ function startSortKey(start: string, tz: string): string {
   return "99:98";
 }
 
-// Keep events that occur on `today` (KST), plus events with no parseable date.
+// Keep events that overlap `today` (KST): single-day events today AND multi-day
+// events that started earlier but are still ongoing (e.g. shared multi-day events).
 function isToday(event: CalendarEvent, today: string, tz: string): boolean {
   if (!event.start) return true;
-  const d = new Date(event.start);
-  if (Number.isNaN(d.getTime())) return true; // can't tell — keep it
-  return getKoreanDate(tz, d) === today;
+  const s = new Date(event.start);
+  if (Number.isNaN(s.getTime())) return true; // can't tell — keep it
+  const startDay = getKoreanDate(tz, s);
+  let endDay = startDay;
+  if (event.end) {
+    const e = new Date(event.end);
+    if (!Number.isNaN(e.getTime())) endDay = getKoreanDate(tz, e);
+  }
+  return startDay <= today && today <= endDay;
+}
+
+// Human-friendly KST time label for display/summarization.
+function eventWhen(event: CalendarEvent, today: string, tz: string): string {
+  if (!event.start) return "시간미정";
+  const s = new Date(event.start);
+  if (Number.isNaN(s.getTime())) return event.start;
+  const startDay = getKoreanDate(tz, s);
+  let endDay = startDay;
+  if (event.end) {
+    const e = new Date(event.end);
+    if (!Number.isNaN(e.getTime())) endDay = getKoreanDate(tz, e);
+  }
+  if (startDay < today) return `진행 중(~${endDay.slice(5)})`; // started earlier, still ongoing
+  if (event.allDay) return "종일";
+  if (startDay !== endDay) return `${formatKoreanTime(event.start, tz)}~`; // multi-day starting today
+  return formatKoreanTime(event.start, tz);
 }
 
 export async function collectCalendar(env: AppEnv): Promise<CalendarResult> {
@@ -102,7 +126,8 @@ export async function collectCalendar(env: AppEnv): Promise<CalendarResult> {
   const allEvents = normalizeEvents(parsed.events);
   const events = allEvents
     .filter((e) => isToday(e, today, tz))
-    .sort((a, b) => startSortKey(a.start, tz).localeCompare(startSortKey(b.start, tz)));
+    .sort((a, b) => startSortKey(a.start, tz).localeCompare(startSortKey(b.start, tz)))
+    .map((e) => ({ ...e, when: eventWhen(e, today, tz) }));
   const tasks = normalizeTasks(parsed.tasks);
 
   return {
