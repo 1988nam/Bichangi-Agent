@@ -15,9 +15,9 @@
     "head_sampling_rate": 1
   },
   "triggers": {
-    // KST = UTC+9. One trigger, two fire times: 08:00 KST (23:00 UTC) and
-    // 18:00 KST (09:00 UTC). Edit the hour list to change notification times.
-    "crons": ["0 9,23 * * *"]
+    // KST = UTC+9. Two fire times: 08:00 KST (23:00 UTC) and 16:00 KST
+    // (07:00 UTC, 주식 장 마감 후). Edit the hour list to change times.
+    "crons": ["0 7,23 * * *"]
   },
   "kv_namespaces": [
     {
