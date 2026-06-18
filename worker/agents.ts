@@ -38,23 +38,33 @@ async function probeTarget(target: AgentTarget, prevHash?: string): Promise<Agen
         detail: `상태 API 실패: HTTP ${res.status}${res.error ? ` (${res.error})` : ""}`,
       };
     }
-    const hash = await sha256Hex(res.text);
-    let detail = trimDetail(res.text, 240);
+    let summary = trimDetail(res.text, 240);
+    let canonical = res.text; // hashed for change detection
+    let isAlert = false;
     try {
       const data = JSON.parse(res.text) as Record<string, unknown>;
-      const status = data.status ?? data.state ?? data.message ?? data.summary;
-      if (status != null) detail = trimDetail(String(status), 240);
+      const s = data.summary ?? data.status ?? data.state ?? data.message;
+      if (s != null) summary = trimDetail(String(s), 240);
+      const items = Array.isArray(data.items) ? data.items.map((x) => String(x)) : [];
+      if (items.length) summary = `${summary} · ${items.slice(0, 5).join(" / ")}`;
+      const level = String(data.level ?? data.severity ?? "").toLowerCase();
+      isAlert = level === "alert" || level === "error" || level === "warn";
+      // Hash only meaningful fields so a changing updatedAt/timestamp doesn't
+      // falsely register as "변경".
+      canonical = JSON.stringify({ s: s ?? "", items, level });
     } catch {
-      // not JSON; keep trimmed text
+      // not JSON; keep trimmed text + full-text hash
     }
+    const hash = await sha256Hex(canonical);
     const changed = prevHash !== undefined && prevHash !== hash;
+    const changeNote = prevHash === undefined ? " (기준선 저장)" : changed ? " · 변경 감지" : " · 변경 없음";
     return {
       name,
       url: target.statusUrl,
       kind: "status-api",
       status: prevHash === undefined ? "ok" : changed ? "changed" : "unchanged",
       changed,
-      detail,
+      detail: `${isAlert ? "⚠️ " : ""}${summary}${changeNote}`,
       contentHash: hash,
     };
   }

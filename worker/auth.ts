@@ -36,6 +36,14 @@ export function isAuthorized(request: Request, env: AppEnv, url: URL): boolean {
   return token != null && timingSafeEqual(token, env.AUTH_TOKEN as string);
 }
 
+// Validate against a specific expected token (e.g. the agent ingest token). When
+// `expected` is empty the route is open (dev / not configured).
+export function tokenMatches(request: Request, url: URL, expected?: string): boolean {
+  if (!expected) return true;
+  const token = presentedToken(request, url);
+  return token != null && timingSafeEqual(token, expected);
+}
+
 export function unauthorized(): Response {
   return json(
     { error: "unauthorized", hint: "AUTH_TOKEN 필요 — Authorization: Bearer <token> 또는 ?token=" },

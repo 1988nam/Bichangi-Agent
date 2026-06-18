@@ -1,4 +1,4 @@
-import type { AppEnv, DailyReport, Memory } from "./types";
+import type { AgentEvent, AppEnv, DailyReport, Memory } from "./types";
 
 // KV-backed persistence. Coarse JSON documents written ~once/day and read whole
 // — the textbook KV access pattern (see research notes).
@@ -87,6 +87,37 @@ export async function listRecentReports(env: AppEnv, limit = 30): Promise<Histor
     .map((k) => ({ date: k.name.slice("report:".length), key: k.name }))
     .sort((a, b) => (a.date < b.date ? 1 : -1))
     .slice(0, limit);
+}
+
+// ---- Agent events (pushed via POST /api/agent-event) -------------------
+const EVENT_TTL_SECONDS = 60 * 60 * 24 * 7; // keep 7 days
+const K_EVENTS_CURSOR = "events:cursor";
+
+// One KV key per event (key sorts by ISO time) to avoid read-modify-write races
+// and the 1-write/sec-per-key limit during bursts.
+export async function addEvent(env: AppEnv, ev: AgentEvent): Promise<void> {
+  const suffix = crypto.randomUUID().slice(0, 8);
+  await env.REPORTS.put(`event:${ev.at}:${suffix}`, JSON.stringify(ev), {
+    expirationTtl: EVENT_TTL_SECONDS,
+  });
+}
+
+export async function getRecentEvents(env: AppEnv, sinceIso?: string, limit = 30): Promise<AgentEvent[]> {
+  const { keys } = await env.REPORTS.list({ prefix: "event:", limit: 1000 });
+  let names = keys.map((k) => k.name);
+  if (sinceIso) names = names.filter((n) => n.slice("event:".length) >= sinceIso);
+  names.sort((a, b) => (a < b ? 1 : -1)); // newest first
+  names = names.slice(0, limit);
+  const events = await Promise.all(names.map((n) => env.REPORTS.get<AgentEvent>(n, "json")));
+  return events.filter((e): e is AgentEvent => e !== null);
+}
+
+export async function getEventsCursor(env: AppEnv): Promise<string | null> {
+  return await env.REPORTS.get(K_EVENTS_CURSOR);
+}
+
+export async function setEventsCursor(env: AppEnv, iso: string): Promise<void> {
+  await env.REPORTS.put(K_EVENTS_CURSOR, iso);
 }
 
 // Round-trip probe used by diagnostics to confirm KV read+write actually work.

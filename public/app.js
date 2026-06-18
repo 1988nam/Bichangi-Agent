@@ -107,13 +107,17 @@ function renderRaw(raw) {
   cal.replaceChildren(...calItems.map((t) => liText(t)));
 
   const ag = $("rawAgents");
-  ag.replaceChildren(
-    ...(raw.agents ?? []).map((a) => {
-      const li = liText(`${a.name} · ${a.kind} — ${a.detail}`);
-      li.dataset.status = statusColors[a.status] ?? "muted";
-      return li;
-    }),
-  );
+  const agentItems = (raw.agents ?? []).map((a) => {
+    const li = liText(`${a.name} · ${a.kind} — ${a.detail}`);
+    li.dataset.status = statusColors[a.status] ?? "muted";
+    return li;
+  });
+  const eventItems = (raw.events ?? []).map((e) => {
+    const li = liText(`${e.level === "alert" ? "⚠️" : "•"} [${e.agent}] ${e.title}${e.detail ? " — " + e.detail : ""}`);
+    li.dataset.status = e.level === "alert" ? "bad" : "ok";
+    return li;
+  });
+  ag.replaceChildren(...agentItems, ...eventItems);
 
   const news = $("rawNews");
   const items = raw.news?.items ?? [];

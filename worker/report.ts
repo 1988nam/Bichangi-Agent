@@ -1,4 +1,5 @@
 import type {
+  AgentEvent,
   AgentStatus,
   AppEnv,
   Briefing,
@@ -14,7 +15,14 @@ import { runAgents } from "./agents";
 import { collectNews } from "./news";
 import { generate, geminiConfigured, extractJson } from "./gemini";
 import { sendKakao, publicBaseUrl } from "./kakao";
-import { getMemory, saveMemory, saveReport } from "./storage";
+import {
+  getMemory,
+  saveMemory,
+  saveReport,
+  getRecentEvents,
+  getEventsCursor,
+  setEventsCursor,
+} from "./storage";
 
 const SYSTEM_PROMPT = `당신은 한 사람을 위한 운영 비서입니다.
 - 한국어로, 짧고 실용적이며 운영 중심의 말투로 작성합니다.
@@ -41,6 +49,7 @@ function buildPrompt(
   agents: AgentStatus[],
   news: NewsResult,
   memory: Memory,
+  events: AgentEvent[],
 ): string {
   const data = {
     date,
@@ -55,6 +64,13 @@ function buildPrompt(
       status: a.status,
       changed: a.changed,
       detail: a.detail,
+    })),
+    agentEvents: events.map((e) => ({
+      agent: e.agent,
+      level: e.level,
+      title: e.title,
+      detail: e.detail,
+      at: e.at,
     })),
     news: {
       status: news.status,
@@ -85,7 +101,7 @@ function buildPrompt(
     "- kakaoText: 카카오톡 알림용. 180자 이내, 가장 중요한 것 우선. 일정 핵심 + 에이전트 변경/실패 + 뉴스 1~2건을 압축. 이모지 최소화.",
     "- headline: 한 줄 요약(40자 이내).",
     "- schedule: 오늘 일정과 미완료 할 일을 2~4줄로. 단, calendar.status가 'mock'이면 '오늘 일정 없음'이 아니라 'Google Calendar 미연동(엔드포인트 미설정)'이라고 명시하고, 'ok'인데 비어있을 때만 '오늘 일정 없음'으로 적기.",
-    "- agents: 투/가/다/부챙이의 상태와 '변경 감지/실패'를 우선해서 2~4줄로.",
+    "- agents: 투/가/다/부챙이의 상태(agents)와 최근 에이전트 이벤트(agentEvents)를 종합해 2~5줄로. level이 'alert'인 이벤트와 '변경 감지/실패'를 맨 앞에 우선 배치하고, 평소와 같으면 '특이사항 없음'.",
     "- news: 중요도순 상위 3건을 제목 + 한 줄 이유로(제외 주제 빼기). news.status가 'mock'이면 '뉴스 소스 미설정', 'failed'면 '뉴스 수집 실패'라고 적기.",
     "- actionItems: 사용자가 오늘 해야 할 일 0~5개(문장 배열).",
     "- memoryUpdates: 기억해두면 좋을 항목 0~5개(문장 배열).",
@@ -99,6 +115,7 @@ function fallbackBriefing(
   calendar: CalendarResult,
   agents: AgentStatus[],
   news: NewsResult,
+  events: AgentEvent[],
   note: string,
 ): Briefing {
   const scheduleLines =
@@ -113,12 +130,19 @@ function fallbackBriefing(
     `정상 ${agents.filter((a) => a.status === "unchanged" || a.status === "ok").length} · ` +
     `변경 ${changed.length} · 실패 ${failed.length}`;
 
+  const alertEvents = events.filter((e) => e.level === "alert");
+  const infoEvents = events.filter((e) => e.level !== "alert");
+  const eventLines = [
+    ...alertEvents.map((e) => `⚠️ [${e.agent}] ${e.title}${e.detail ? " — " + e.detail : ""}`),
+    ...infoEvents.slice(0, 5).map((e) => `• [${e.agent}] ${e.title}`),
+  ];
+
   const newsLines = news.items.slice(0, 3).map((n) => `· ${n.title} (${n.source})`);
 
   const kakaoParts = [
     `[오늘 브리핑]`,
     calendar.status === "ok" ? `일정 ${calendar.events.length}건` : "일정 미연동",
-    `에이전트 변경 ${changed.length}/실패 ${failed.length}`,
+    alertEvents.length ? `긴급 ${alertEvents.length}건` : `에이전트 변경 ${changed.length}/실패 ${failed.length}`,
     news.items.length ? `뉴스 ${news.items.length}건` : "뉴스 미연동",
   ];
 
@@ -126,9 +150,17 @@ function fallbackBriefing(
     kakaoText: kakaoParts.join(" · ").slice(0, 180),
     headline: "오늘의 운영 브리핑 (요약 엔진 미사용)",
     schedule: [...scheduleLines, ...openTasks].join("\n"),
-    agents: [agentLine, ...changed.map((a) => `• ${a.name}: ${a.detail}`), ...failed.map((a) => `• ${a.name}: ${a.detail}`)].join("\n"),
+    agents: [
+      agentLine,
+      ...changed.map((a) => `• ${a.name}: ${a.detail}`),
+      ...failed.map((a) => `• ${a.name}: ${a.detail}`),
+      ...eventLines,
+    ].join("\n"),
     news: newsLines.length ? newsLines.join("\n") : news.detail,
-    actionItems: failed.map((a) => `${a.name} 점검 필요`),
+    actionItems: [
+      ...failed.map((a) => `${a.name} 점검 필요`),
+      ...alertEvents.map((e) => `${e.agent}: ${e.title} 확인`),
+    ],
     memoryUpdates: [],
     generatedBy: "fallback",
     note,
@@ -142,26 +174,27 @@ async function generateBriefing(
   agents: AgentStatus[],
   news: NewsResult,
   memory: Memory,
+  events: AgentEvent[],
 ): Promise<Briefing> {
   if (!geminiConfigured(env)) {
-    return fallbackBriefing(calendar, agents, news, "GEMINI_API_KEY 미설정 — 규칙 기반 요약 사용");
+    return fallbackBriefing(calendar, agents, news, events, "GEMINI_API_KEY 미설정 — 규칙 기반 요약 사용");
   }
 
   const result = await generate(env, {
     system: SYSTEM_PROMPT,
-    prompt: buildPrompt(date, calendar, agents, news, memory),
+    prompt: buildPrompt(date, calendar, agents, news, memory, events),
     json: true,
     temperature: 0.4,
     maxOutputTokens: 3072,
   });
 
   if (!result.ok) {
-    return fallbackBriefing(calendar, agents, news, `Gemini 호출 실패: ${result.error ?? "unknown"}`);
+    return fallbackBriefing(calendar, agents, news, events, `Gemini 호출 실패: ${result.error ?? "unknown"}`);
   }
 
   const parsed = extractJson<BriefingJson>(result.text);
   if (!parsed || !parsed.kakaoText) {
-    return fallbackBriefing(calendar, agents, news, "Gemini 응답 파싱 실패 — 규칙 기반 요약 사용");
+    return fallbackBriefing(calendar, agents, news, events, "Gemini 응답 파싱 실패 — 규칙 기반 요약 사용");
   }
 
   return {
@@ -228,13 +261,18 @@ export async function buildReport(env: AppEnv, options: BuildOptions): Promise<D
 
   const memory = await getMemory(env, iso);
 
-  const [calendar, agents, news] = await Promise.all([
+  // Agent events since the last delivered briefing (or the last 24h on first run).
+  const cursor = await getEventsCursor(env);
+  const since = cursor ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const [calendar, agents, news, events] = await Promise.all([
     collectCalendar(env),
     runAgents(env, memory),
     collectNews(env, memory),
+    getRecentEvents(env, since, 30),
   ]);
 
-  const briefing = await generateBriefing(env, date, calendar, agents, news, memory);
+  const briefing = await generateBriefing(env, date, calendar, agents, news, memory, events);
 
   const nextMemory = updateMemory(memory, calendar, agents, iso);
 
@@ -245,7 +283,7 @@ export async function buildReport(env: AppEnv, options: BuildOptions): Promise<D
     timezone: tz,
     mode: env.REPORT_MODE ?? "live",
     briefing,
-    raw: { calendar, agents, news },
+    raw: { calendar, agents, news, events },
     delivery: {
       kakao: "skipped",
       dashboard: "ready",
@@ -270,6 +308,10 @@ export async function buildReport(env: AppEnv, options: BuildOptions): Promise<D
       // real delivery state (not a stale "pending").
       report.delivery.googleDrive = await persistToGoogleDrive(env, report);
     }
+
+    // Advance the event cursor so the next delivered briefing only includes
+    // events that arrive after this one (previews don't consume events).
+    await setEventsCursor(env, iso);
   }
 
   await Promise.all([saveReport(env, report), saveMemory(env, nextMemory)]);

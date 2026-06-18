@@ -20,6 +20,7 @@ export interface AppEnv {
 
   // Secrets (wrangler secret put / .dev.vars)
   AUTH_TOKEN?: string; // when set, gates mutating/side-effecting /api routes
+  AGENT_INGEST_TOKEN?: string; // token agents use to POST /api/agent-event (falls back to AUTH_TOKEN)
   AI_GATEWAY_TOKEN?: string; // cf-aig-authorization Bearer for an authenticated AI Gateway
   GEMINI_API_KEY?: string;
   KAKAO_WEBHOOK_URL?: string;
@@ -78,6 +79,16 @@ export interface AgentStatus {
   changed: boolean;
   detail: string;
   contentHash?: string;
+}
+
+// ---- Agent events (pushed by agents) -----------------------------------
+export interface AgentEvent {
+  agent: string;
+  level: "info" | "alert";
+  title: string;
+  detail?: string;
+  items?: string[];
+  at: string; // ISO
 }
 
 // ---- News --------------------------------------------------------------
@@ -140,6 +151,7 @@ export interface DailyReport {
     calendar: CalendarResult;
     agents: AgentStatus[];
     news: NewsResult;
+    events: AgentEvent[];
   };
   delivery: {
     kakao: DeliveryState;

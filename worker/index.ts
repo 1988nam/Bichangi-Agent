@@ -1,15 +1,23 @@
-import type { AppEnv, Memory } from "./types";
+import type { AgentEvent, AppEnv, Memory } from "./types";
 import { json, getKoreanDate, nowIso } from "./util";
 import { buildReport } from "./report";
 import { runDiagnostics } from "./diagnostics";
-import { getLatestReport, getMemory, saveMemory, listRecentReports, getReportByDate } from "./storage";
+import {
+  getLatestReport,
+  getMemory,
+  saveMemory,
+  listRecentReports,
+  getReportByDate,
+  addEvent,
+} from "./storage";
 import {
   routeKakaoLogin,
   routeKakaoCallback,
   sendKakaoDirect,
+  sendKakao,
   publicBaseUrl,
 } from "./kakao";
-import { isAuthorized, unauthorized } from "./auth";
+import { isAuthorized, unauthorized, tokenMatches } from "./auth";
 
 // Routes reachable without AUTH_TOKEN: health, and the Kakao OAuth browser
 // redirects (which can't carry a Bearer header). Everything else is gated when
@@ -44,12 +52,53 @@ async function updateMemoryFromBody(env: AppEnv, body: unknown): Promise<Memory>
   return memory;
 }
 
+// Agents POST meaningful events here. Uses its own ingest token (AGENT_INGEST_TOKEN,
+// falling back to AUTH_TOKEN) so agents never hold the dashboard token. "alert"
+// events fire an immediate KakaoTalk; all events are folded into the next briefing.
+async function handleAgentEvent(request: Request, env: AppEnv, url: URL): Promise<Response> {
+  if (!tokenMatches(request, url, env.AGENT_INGEST_TOKEN || env.AUTH_TOKEN)) {
+    return unauthorized();
+  }
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "invalid_json" }, { status: 400 });
+  }
+  const o = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+  const agent = String(o.agent ?? "").trim();
+  const title = String(o.title ?? "").trim();
+  if (!agent || !title) {
+    return json({ error: "agent_and_title_required" }, { status: 400 });
+  }
+  const level = o.level === "alert" ? "alert" : "info";
+  const ev: AgentEvent = {
+    agent: agent.slice(0, 40),
+    level,
+    title: title.slice(0, 200),
+    detail: o.detail != null ? String(o.detail).slice(0, 500) : undefined,
+    items: Array.isArray(o.items) ? o.items.map((x) => String(x)).slice(0, 10) : undefined,
+    at: nowIso(),
+  };
+  await addEvent(env, ev);
+
+  let deliveredKakao = false;
+  if (level === "alert") {
+    const lines = [`[긴급] ${ev.agent}: ${ev.title}`];
+    if (ev.detail) lines.push(ev.detail);
+    const sent = await sendKakao(env, lines.join("\n"), publicBaseUrl(env, request));
+    deliveredKakao = sent.ok;
+  }
+  return json({ ok: true, level, deliveredKakao });
+}
+
 async function routeApi(request: Request, env: AppEnv, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const { pathname } = url;
   const method = request.method;
 
-  if (!PUBLIC_PATHS.has(pathname) && !isAuthorized(request, env, url)) {
+  // /api/agent-event validates its own ingest token inside the handler.
+  if (pathname !== "/api/agent-event" && !PUBLIC_PATHS.has(pathname) && !isAuthorized(request, env, url)) {
     return unauthorized();
   }
 
@@ -95,6 +144,10 @@ async function routeApi(request: Request, env: AppEnv, ctx: ExecutionContext): P
       return json({ error: "invalid_json" }, { status: 400 });
     }
     return json(await updateMemoryFromBody(env, body));
+  }
+
+  if (pathname === "/api/agent-event" && method === "POST") {
+    return handleAgentEvent(request, env, url);
   }
 
   if (pathname === "/api/kakao/login" && method === "GET") {

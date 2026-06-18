@@ -19,12 +19,57 @@ npx wrangler secret put GEMINI_API_KEY
 - Local dev reads the key from `.dev.vars` (gitignored), not from secrets.
 - Without the key the Worker still produces a rule-based fallback briefing.
 
-## Agent status APIs (optional, recommended)
+## Agent integration: events (push) + status (pull)
 
-`AGENT_*_URL` point at the agent homepages. The Worker can only detect "the deployed page
-changed" from a homepage. For a real update summary, expose a small JSON status endpoint
-per agent and set `AGENT_TUCHANGI_STATUS_URL` (etc.); when present it is used instead of
-the homepage and its `status`/`summary` field is surfaced directly.
+`AGENT_*_URL` point at the agent homepages, which for an SPA are just an empty shell — the
+Worker can only detect "the deployed page changed". For meaningful alerts, agents should
+publish their real state in one of two ways (you can use both):
+
+### Push — agents send events (real-time)
+
+Agents POST meaningful events to the assistant. `level: "alert"` fires an immediate
+KakaoTalk; every event is folded into the next 08:00/16:00 briefing.
+
+```
+POST https://bichangi-agent.1988nam.workers.dev/api/agent-event
+Authorization: Bearer <AGENT_INGEST_TOKEN>
+Content-Type: application/json
+
+{ "agent": "부챙이", "level": "alert", "title": "자동매매 오류",
+  "detail": "거래소 API 연결 끊김", "items": ["주문 2건 대기"] }
+```
+
+- `agent` (required), `title` (required), `level` ("info" | "alert", default info),
+  `detail` (optional), `items` (optional string array).
+- Minimal client (works from a browser SPA or a server/cron):
+
+```js
+fetch("https://bichangi-agent.1988nam.workers.dev/api/agent-event", {
+  method: "POST",
+  headers: { "content-type": "application/json", authorization: "Bearer <AGENT_INGEST_TOKEN>" },
+  body: JSON.stringify({ agent: "투챙이", level: "info", title: "오늘 매수 신호 2건" }),
+});
+```
+
+Set the ingest token: `npx wrangler secret put AGENT_INGEST_TOKEN` (it falls back to
+`AUTH_TOKEN` if unset). Keep this token out of public client code where possible.
+
+### Pull — agents expose a status endpoint (polled 08:00/16:00)
+
+Each agent exposes a JSON status endpoint (e.g. a Cloudflare Pages Function at
+`functions/api/status.js`) and you set `AGENT_TUCHANGI_STATUS_URL` (etc.). When present it
+is used instead of the homepage.
+
+```jsonc
+// GET <agent>/api/status
+{ "status": "ok",        // or "alert" / "error"
+  "summary": "보유 3종목 +1.2%, 매수신호 2건",
+  "items": ["삼성전자 매수 신호", "SK하이닉스 관심"],
+  "level": "info" }      // "alert"/"error"/"warn" → flagged with ⚠️
+```
+
+Change detection hashes only `summary`/`items`/`level` (not timestamps), so a ticking
+`updatedAt` won't falsely report "변경". `summary` + `items` are surfaced in the briefing.
 
 ## Agent URLs
 
