@@ -53,9 +53,24 @@ async function updateMemoryFromBody(env: AppEnv, body: unknown): Promise<Memory>
   return memory;
 }
 
+// Agents whose "alert" events should skip the immediate KakaoTalk. They're still
+// recorded and surfaced in the next 08:00/16:00 briefing. Defaults to the
+// auto-trading agent (부챙이); override with IMMEDIATE_ALERT_SUPPRESS ("" allows all).
+function suppressedAlertAgents(env: AppEnv): Set<string> {
+  const raw = env.IMMEDIATE_ALERT_SUPPRESS;
+  if (raw == null) return new Set(["부챙이"]);
+  return new Set(
+    raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+}
+
 // Agents POST meaningful events here. Uses its own ingest token (AGENT_INGEST_TOKEN,
 // falling back to AUTH_TOKEN) so agents never hold the dashboard token. "alert"
-// events fire an immediate KakaoTalk; all events are folded into the next briefing.
+// events fire an immediate KakaoTalk (unless the agent is suppressed); all events
+// are folded into the next briefing regardless.
 async function handleAgentEvent(request: Request, env: AppEnv, url: URL): Promise<Response> {
   if (!tokenMatches(request, url, env.AGENT_INGEST_TOKEN || env.AUTH_TOKEN)) {
     return unauthorized();
@@ -84,13 +99,14 @@ async function handleAgentEvent(request: Request, env: AppEnv, url: URL): Promis
   await addEvent(env, ev);
 
   let deliveredKakao = false;
-  if (level === "alert") {
+  const suppressed = suppressedAlertAgents(env).has(ev.agent);
+  if (level === "alert" && !suppressed) {
     const lines = [`[긴급] ${ev.agent}: ${ev.title}`];
     if (ev.detail) lines.push(ev.detail);
     const sent = await sendKakao(env, lines.join("\n"), publicBaseUrl(env, request));
     deliveredKakao = sent.ok;
   }
-  return json({ ok: true, level, deliveredKakao });
+  return json({ ok: true, level, deliveredKakao, suppressed });
 }
 
 async function routeApi(request: Request, env: AppEnv, ctx: ExecutionContext): Promise<Response> {

@@ -28,7 +28,12 @@ publish their real state in one of two ways (you can use both):
 ### Push — agents send events (real-time)
 
 Agents POST meaningful events to the assistant. `level: "alert"` fires an immediate
-KakaoTalk; every event is folded into the next 08:00/16:00 briefing.
+KakaoTalk; every event is folded into the next 08:00/16:00 briefing regardless.
+
+Exception: alerts from agents listed in `IMMEDIATE_ALERT_SUPPRESS` (comma-separated;
+defaults to `부챙이`, the auto-trading agent) skip the immediate KakaoTalk and only
+appear in the next briefing. The response returns `"suppressed": true` for those.
+Set `IMMEDIATE_ALERT_SUPPRESS` to an empty string to let every agent alert again.
 
 ```
 POST https://bichangi-agent.1988nam.workers.dev/api/agent-event

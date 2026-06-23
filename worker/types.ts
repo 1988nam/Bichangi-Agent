@@ -16,6 +16,11 @@ export interface AppEnv {
   ASSISTANT_TIMEZONE: string;
   REPORT_MODE?: string;
   PUBLIC_BASE_URL?: string;
+  // Comma-separated agent names whose "alert" events should NOT fire an immediate
+  // KakaoTalk. The events are still recorded and folded into the next 08:00/16:00
+  // briefing. Defaults to "부챙이" (the auto-trading agent) when unset; set to an
+  // empty string to let every agent send immediate alerts again.
+  IMMEDIATE_ALERT_SUPPRESS?: string;
   GEMINI_MODEL?: string;
   // Override the Gemini base (up to ".../models"). Set to a Cloudflare AI Gateway
   // google-ai-studio URL to proxy through a supported region (works around
