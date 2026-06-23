@@ -4,6 +4,7 @@ import { geminiConfigured, generate } from "./gemini";
 import { checkKakao, publicBaseUrl } from "./kakao";
 import { probeStorage, getMemory } from "./storage";
 import { authConfigured } from "./auth";
+import { probeRss, hostOf } from "./news";
 
 export interface Check {
   id: string;
@@ -109,14 +110,19 @@ async function checkNews(env: AppEnv): Promise<Check> {
   if (rss.length === 0) {
     return { id: "news", label: "뉴스 소스", configured: true, ok: true, detail: "검색 엔드포인트만 설정됨" };
   }
-  const res = await fetchText(rss[0], {}, 10_000);
-  return {
-    id: "news",
-    label: "뉴스 소스",
-    configured: true,
-    ok: res.ok,
-    detail: res.ok ? `RSS ${rss.length}개 설정 · 첫 소스 도달 OK` : `첫 RSS 실패: HTTP ${res.status}`,
-  };
+  const p = await probeRss(rss[0]);
+  const host = hostOf(rss[0]);
+  let detail: string;
+  if (p.ok) {
+    detail = `RSS ${rss.length}개 설정 · ${host} OK (항목 ${p.items}건)`;
+  } else if (p.error === "not_feed") {
+    detail = `${host}: HTTP ${p.status}인데 RSS 아님 — 런타임 IP 차단/동의 페이지 추정`;
+  } else if (p.status === 0) {
+    detail = `${host}: 도달 실패(${p.error ?? "network"})`;
+  } else {
+    detail = `${host}: HTTP ${p.status}`;
+  }
+  return { id: "news", label: "뉴스 소스", configured: true, ok: p.ok && p.items > 0, detail };
 }
 
 async function checkKakaoDelivery(env: AppEnv): Promise<Check> {
